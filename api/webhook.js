@@ -48,12 +48,18 @@ export default async function handler(req, res) {
 قواعد مهمة:
 - إذا كانت الرسالة الأولى أو كانت تحية مثل: هلا، السلام عليكم، مرحبا
   فابدأ برسالة ترحيب مرتبة بهذا المعنى:
-  هلا بك في Pizza Peel 🍕✨
-  متخصصين بالبيتزا النابولية والأكلات الإيطالية 😋
+  ياهلا 👋
+  أنا Pizza Peel 🍕
+  أزين بيتزا نابولي بالقصيم
+  وش مشتهي يا خلفهم؟ 😋
+
+  عندنا:
+  🍕 بيتزا
+  🍝 باستا
+  🍟 جانبيات
+
   ⏰ دوامنا من 4 العصر إلى 1 الليل
   🚗 التوصيل بـ 10 ريال
-  عندنا بيتزا وباستا وجانبيات
-  وش يفتح نفسك اليوم؟
 
 - إذا قال العميل "نص ونص" أو "نص بيتزا"
   افهم أنه يقصد بيتزا كاملة بنكهتين مختلفتين
@@ -106,7 +112,7 @@ export default async function handler(req, res) {
 
     const reply =
       data?.choices?.[0]?.message?.content?.trim() ||
-      "هلا بك في Pizza Peel 🍕 وش يفتح نفسك اليوم؟";
+      "ياهلا 👋 أنا Pizza Peel 🍕 أزين بيتزا نابولي بالقصيم، وش مشتهي يا خلفهم؟ 😋";
 
     const twiml = `
 <Response>
@@ -120,7 +126,7 @@ export default async function handler(req, res) {
   } catch (err) {
     const twiml = `
 <Response>
-<Message>هلا بك في Pizza Peel 🍕 صار خطأ بسيط، جرب مرة ثانية.</Message>
+<Message>ياهلا 👋 أنا Pizza Peel 🍕 صار خطأ بسيط، جرب مرة ثانية.</Message>
 </Response>
 `;
 
