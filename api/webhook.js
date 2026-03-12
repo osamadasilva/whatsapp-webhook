@@ -1,4 +1,5 @@
 const greetedUsers = new Set();
+const conversationHistory = new Map();
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -17,6 +18,12 @@ export default async function handler(req, res) {
     lowerBody === "صباح الخير";
 
   const shouldGreet = from && isGreeting && !greetedUsers.has(from);
+
+  // جلب تاريخ المحادثة
+  if (!conversationHistory.has(from)) {
+    conversationHistory.set(from, []);
+  }
+  const history = conversationHistory.get(from);
 
   const systemPrompt = `
 أنت موظف واتساب لمطعم Pizza Peel 🍕
@@ -127,6 +134,14 @@ export default async function handler(req, res) {
     ? `هذه أول تحية من العميل. رحب به فقط.\n\nرسالة العميل: ${body || "هلا"}`
     : body || "هلا";
 
+  // أضف رسالة العميل للتاريخ
+  history.push({ role: "user", content: userMessage });
+
+  // احتفظ بآخر 10 رسائل فقط عشان ما يطول
+  if (history.length > 10) {
+    history.splice(0, history.length - 10);
+  }
+
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -139,9 +154,7 @@ export default async function handler(req, res) {
         model: "claude-haiku-4-5-20251001",
         max_tokens: 250,
         system: systemPrompt,
-        messages: [
-          { role: "user", content: userMessage }
-        ]
+        messages: history
       })
     });
 
@@ -150,6 +163,9 @@ export default async function handler(req, res) {
     const reply =
       data?.content?.[0]?.text?.trim() ||
       "ياهلا 👋 أنا Pizza Peel 🍕 وش مشتهي يا خلفهم؟";
+
+    // أضف رد البوت للتاريخ
+    history.push({ role: "assistant", content: reply });
 
     if (shouldGreet && from) {
       greetedUsers.add(from);
