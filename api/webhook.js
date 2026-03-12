@@ -6,7 +6,13 @@ export default async function handler(req, res) {
     return res.status(405).send("Method Not Allowed");
   }
 
-  const body = (req.body?.Body || "").trim();
+  const latitude = req.body?.Latitude || "";
+  const longitude = req.body?.Longitude || "";
+  const isLocation = latitude && longitude;
+  const body = isLocation
+    ? `[لوكيشن العميل: https://maps.google.com/?q=${latitude},${longitude}]`
+    : (req.body?.Body || "").trim();
+
   const from = req.body?.From || "";
   const lowerBody = body.toLowerCase();
 
@@ -52,6 +58,7 @@ export default async function handler(req, res) {
 - استخدم الترحيب فقط إذا وصلك تنبيه بأن هذه أول تحية من العميل.
 - إذا لم تكن أول تحية، جاوب مباشرة على السؤال بدون ترحيب.
 - إذا كانت الرسالة سؤال عن المنيو أو الأسعار أو المكونات، ادخل مباشرة في الجواب.
+- إذا أرسل العميل لوكيشن، رد عليه: "تم استلام موقعك 📍 والسائق في الطريق إليك إن شاء الله 🛵"
 
 معلومات المطعم:
 - الموقع: الرس، ريف جلاس
@@ -174,7 +181,7 @@ export default async function handler(req, res) {
     const confirmWords = ["أكيد", "تمام", "أكد", "اوكي", "تم", "نعم", "أي"];
     const isConfirmed = confirmWords.some(word => body.includes(word));
 
-    if (isConfirmed) {
+    if (isConfirmed || isLocation) {
       const lastOrders = history
         .slice(-6)
         .map(m => `${m.role === "user" ? "العميل" : "البوت"}: ${m.content}`)
@@ -199,7 +206,11 @@ export default async function handler(req, res) {
           body: new URLSearchParams({
             From: "whatsapp:+14155238886",
             To: "whatsapp:+966553419919",
-            Body: `🔔 طلب جديد!\nمن: ${from}\n\n${lastOrders}`
+            Body: `🔔 طلب جديد!\nمن: ${from}\n\n${lastOrders}${
+              isLocation
+                ? `\n\n📍 اللوكيشن: https://maps.google.com/?q=${latitude},${longitude}`
+                : ""
+            }`
           })
         }
       );
