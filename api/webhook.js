@@ -200,7 +200,7 @@ export default async function handler(req, res) {
           },
           body: new URLSearchParams({
             From: "whatsapp:+14155238886",
-            To: "whatsapp:+966553419919",
+            To: "whatsapp:+966534459277",
             Body: `🔔 طلب جديد!\nمن: ${from}\n\n${lastOrders}${
               isLocation
                 ? `\n\n📍 اللوكيشن: https://maps.google.com/?q=${latitude},${longitude}`
