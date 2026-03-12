@@ -19,7 +19,6 @@ export default async function handler(req, res) {
 
   const shouldGreet = from && isGreeting && !greetedUsers.has(from);
 
-  // جلب تاريخ المحادثة
   if (!conversationHistory.has(from)) {
     conversationHistory.set(from, []);
   }
@@ -99,24 +98,6 @@ export default async function handler(req, res) {
 - باربكيو — 2
 - عسل سبايسي — 3
 
-قواعد الطلب:
-- إذا قال العميل نص ونص أو نص بيتزا، افهم أنه يقصد بيتزا كاملة بنكهتين.
-- السعر = نصف سعر كل نكهة.
-- إذا طلب أكثر من صنف، اجمع الأسعار.
-- إذا طلب توصيل، أضف 10 ريال.
-- قبل التأكيد، اعرض الطلب بهذا الأسلوب:
-
-طلبك كذا يا طويل العمر 👇
-
-ثم اذكر الأصناف والأسعار
-ثم اكتب المجموع
-
-بعدها اسأل:
-هل نأكد الطلب؟
-
-إذا أكد العميل بكلمات مثل:
-أكيد / تمام / أكد / اوكي / تم
-
 أسلوب البيع:
 - لا تسأل عن التأكيد إلا مرة واحدة فقط بعد اكتمال الطلب.
 - إذا طلب صنف واحد فقط، اقترح عليه إضافة جانبي أو مشروب:
@@ -144,13 +125,6 @@ export default async function handler(req, res) {
 وبيكون جاهز خلال 15 دقيقة إن شاء الله 🍕
 بعد التأكيد اطلب منه يرسل اللوكيشن إذا يبي توصيل.
 
-
-قل له:
-أبشر 🌷
-تم تأكيد طلبك
-وبيكون جاهز خلال 15 دقيقة إن شاء الله 🍕
-بعد التأكيد اطلب منه يرسل اللوكيشن إذا يبي توصيل.
-
 إذا طُلب منك الترحيب، استخدم هذا النص فقط:
 ياهلا 👋
 أنا Pizza Peel 🍕
@@ -162,10 +136,8 @@ export default async function handler(req, res) {
     ? `هذه أول تحية من العميل. رحب به فقط.\n\nرسالة العميل: ${body || "هلا"}`
     : body || "هلا";
 
-  // أضف رسالة العميل للتاريخ
   history.push({ role: "user", content: userMessage });
 
-  // احتفظ بآخر 10 رسائل فقط عشان ما يطول
   if (history.length > 10) {
     history.splice(0, history.length - 10);
   }
@@ -192,11 +164,45 @@ export default async function handler(req, res) {
       data?.content?.[0]?.text?.trim() ||
       "ياهلا 👋 أنا Pizza Peel 🍕 وش مشتهي يا خلفهم؟";
 
-    // أضف رد البوت للتاريخ
     history.push({ role: "assistant", content: reply });
 
     if (shouldGreet && from) {
       greetedUsers.add(from);
+    }
+
+    // إرسال الطلب لرقمك بعد التأكيد
+    const confirmWords = ["أكيد", "تمام", "أكد", "اوكي", "تم", "نعم", "أي"];
+    const isConfirmed = confirmWords.some(word => body.includes(word));
+
+    if (isConfirmed) {
+      const lastOrders = history
+        .slice(-6)
+        .map(m => `${m.role === "user" ? "العميل" : "البوت"}: ${m.content}`)
+        .join("\n");
+
+      await fetch(
+        "https://api.twilio.com/2010-04-01/Accounts/" +
+          process.env.TWILIO_ACCOUNT_SID +
+          "/Messages.json",
+        {
+          method: "POST",
+          headers: {
+            Authorization:
+              "Basic " +
+              Buffer.from(
+                process.env.TWILIO_ACCOUNT_SID +
+                  ":" +
+                  process.env.TWILIO_AUTH_TOKEN
+              ).toString("base64"),
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: new URLSearchParams({
+            From: "whatsapp:+14155238886",
+            To: "whatsapp:+966553419919",
+            Body: `🔔 طلب جديد!\nمن: ${from}\n\n${lastOrders}`
+          })
+        }
+      );
     }
 
     const twiml = `
