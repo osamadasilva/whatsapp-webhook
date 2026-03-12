@@ -123,12 +123,8 @@ export default async function handler(req, res) {
 بعدها اسأل:
 هل نأكد؟
 
-إذا أكد بكلمات مثل:
-أكيد / تمام / أكد / اوكي / تم / نعم / أي
-
-قل له:
-أبشر 🌷
-تم تأكيد طلبك
+إذا أكد العميل بأي طريقة — موافقة أو إيجاب أو تأكيد — قل له بالضبط هذه الجملة:
+تم تأكيد طلبك 🌷
 وبيكون جاهز خلال 15 دقيقة إن شاء الله 🍕
 بعد التأكيد اطلب منه يرسل اللوكيشن إذا يبي توصيل.
 
@@ -177,9 +173,8 @@ export default async function handler(req, res) {
       greetedUsers.add(from);
     }
 
-    // إرسال الطلب لرقمك بعد التأكيد
-    const confirmWords = ["أكيد", "تمام", "أكد", "اوكي", "تم", "نعم", "أي"];
-    const isConfirmed = confirmWords.some(word => body.includes(word));
+    // إرسال الطلب لرقمك لما Claude يؤكد الطلب أو يستلم لوكيشن
+    const isConfirmed = reply.includes("تم تأكيد طلبك");
 
     if (isConfirmed || isLocation) {
       const lastOrders = history
