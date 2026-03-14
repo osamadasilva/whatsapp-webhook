@@ -30,28 +30,12 @@ export default async function handler(req, res) {
   }
   const history = conversationHistory.get(from);
 
-  const menuImages = {
-    "مارجريتا": "https://i.imgur.com/W8KLU4v.jpeg",
-    "بيبروني": "",
-    "مسخن": "",
-    "سموكي بريسكيت": "",
-    "ترفل": "",
-    "الأجبان الأربعة": "",
-    "الفريدو": "",
-    "بيف بينك باستا": "",
-    "ترافل ريغاتوني": "",
-    "كرات الريزوتو": "",
-    "فرايز": "",
-    "ترافل فرايز": "",
-  };
-
   const systemPrompt = `
 أنت موظف واتساب لمطعم Pizza Peel 🍕
 
 تكلم بالعربية بلهجة قصيمية خفيفة محترمة.
 كن ودود ومختصر واستخدم إيموجي بسيط.
 استخدم "يا عزيزي" في مخاطبة العميل دائماً.
-لا تقول أبداً "وش أبي لك" — بدلها قل دائماً "وش أخدمك فيه يا عزيزي؟ 😊"
 
 فهم السياق مهم جداً:
 
@@ -74,37 +58,8 @@ export default async function handler(req, res) {
 - لا تكرر الرسالة الترحيبية.
 - استخدم الترحيب فقط إذا وصلك تنبيه بأن هذه أول تحية من العميل.
 - إذا لم تكن أول تحية، جاوب مباشرة على السؤال بدون ترحيب.
-- إذا قال العميل "المنيو" أو "ارسل المنيو" أو "اعرض المنيو" أو "وش عندكم" اعرض المنيو كامل فوراً بدون أي سؤال.
+- إذا كانت الرسالة سؤال عن المنيو أو الأسعار أو المكونات، ادخل مباشرة في الجواب.
 - إذا أرسل العميل لوكيشن، رد عليه: "تم استلام موقعك 📍 والسائق في الطريق إليك إن شاء الله 🛵"
-
-إذا سأل العميل عن المنيو اعرضه بهذا الشكل بالضبط:
-
-🍕 البيتزا
-• مارجريتا — 32 ريال
-• بيبروني — 36 ريال
-• الأجبان الأربعة — 36 ريال
-• الفريدو — 37 ريال
-• مسخن — 39 ريال
-• ترفل — 42 ريال
-• سموكي بريسكيت — 43 ريال
-
-🍝 الباستا
-• بيف بينك باستا — 31 ريال
-• ترافل ريغاتوني — 31 ريال
-
-🍟 الجانبيات
-• فرايز — 10 ريال
-• ترافل فرايز — 19 ريال
-• كرات الريزوتو — 22 ريال
-
-🥫 الصوصات
-• رانش — 2 ريال
-• باربكيو — 2 ريال
-• عسل سبايسي — 3 ريال
-
-🥤 المشروبات
-• بيبسي — 3 ريال
-• ماء — 1 ريال
 
 معلومات المطعم:
 - الموقع: الرس، ريف جلاس
@@ -112,7 +67,7 @@ export default async function handler(req, res) {
 - التوصيل: 10 ريال — العميل يرسل اللوكيشن ونوصله
 - رقم التواصل: 0533373974
 
-المنيو الكامل:
+المنيو:
 
 🍕 البيتزا
 
@@ -200,7 +155,7 @@ export default async function handler(req, res) {
 ياهلا 👋
 أنا Pizza Peel 🍕
 أزين بيتزا نابولي بالقصيم 😋
-تبي تشوف المنيو؟
+وش مشتهي يا عزيزي؟
 `;
 
   const userMessage = shouldGreet
@@ -223,7 +178,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 600,
+        max_tokens: 250,
         system: systemPrompt,
         messages: history
       })
@@ -233,18 +188,13 @@ export default async function handler(req, res) {
 
     const reply =
       data?.content?.[0]?.text?.trim() ||
-      "ياهلا 👋 أنا Pizza Peel 🍕 وش أخدمك فيه يا عزيزي؟ 😊";
+      "ياهلا 👋 أنا Pizza Peel 🍕 وش مشتهي يا عزيزي؟";
 
     history.push({ role: "assistant", content: reply });
 
     if (shouldGreet && from) {
       greetedUsers.add(from);
     }
-
-    const matchedImage = Object.keys(menuImages).find(item =>
-      (body.includes(item) || reply.includes(item)) && menuImages[item] !== ""
-    );
-    const imageUrl = matchedImage ? menuImages[matchedImage] : null;
 
     const isConfirmed = reply.includes("تم تأكيد طلبك");
 
@@ -283,15 +233,21 @@ export default async function handler(req, res) {
       );
     }
 
-    const twiml = imageUrl
-      ? `<Response><Message><Body>${escapeXml(reply)}</Body><Media>${imageUrl}</Media></Message></Response>`
-      : `<Response><Message>${escapeXml(reply)}</Message></Response>`;
+    const twiml = `
+<Response>
+<Message>${escapeXml(reply)}</Message>
+</Response>
+`;
 
     res.setHeader("Content-Type", "text/xml; charset=utf-8");
     return res.status(200).send(twiml);
-
   } catch (err) {
-    const twiml = `<Response><Message>ياهلا 👋 صار خطأ بسيط، جرب مرة ثانية.</Message></Response>`;
+    const twiml = `
+<Response>
+<Message>ياهلا 👋 صار خطأ بسيط، جرب مرة ثانية.</Message>
+</Response>
+`;
+
     res.setHeader("Content-Type", "text/xml; charset=utf-8");
     return res.status(200).send(twiml);
   }
