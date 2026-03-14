@@ -30,6 +30,21 @@ export default async function handler(req, res) {
   }
   const history = conversationHistory.get(from);
 
+  const menuImages = {
+    "مارجريتا": "https://i.imgur.com/W8KLU4v.jpeg",
+    "بيبروني": "",
+    "مسخن": "",
+    "سموكي بريسكيت": "",
+    "ترفل": "",
+    "الأجبان الأربعة": "",
+    "الفريدو": "",
+    "بيف بينك باستا": "",
+    "ترافل ريغاتوني": "",
+    "كرات الريزوتو": "",
+    "فرايز": "",
+    "ترافل فرايز": "",
+  };
+
   const systemPrompt = `
 أنت موظف واتساب لمطعم Pizza Peel 🍕
 
@@ -60,6 +75,34 @@ export default async function handler(req, res) {
 - إذا لم تكن أول تحية، جاوب مباشرة على السؤال بدون ترحيب.
 - إذا كانت الرسالة سؤال عن المنيو أو الأسعار أو المكونات، ادخل مباشرة في الجواب.
 - إذا أرسل العميل لوكيشن، رد عليه: "تم استلام موقعك 📍 والسائق في الطريق إليك إن شاء الله 🛵"
+- إذا سأل العميل عن المنيو أو قال "وش عندكم" اعرض المنيو كامل بهذا الشكل:
+
+🍕 البيتزا
+• مارجريتا — 32 ريال
+• بيبروني — 36 ريال
+• الأجبان الأربعة — 36 ريال
+• الفريدو — 37 ريال
+• مسخن — 39 ريال
+• ترفل — 42 ريال
+• سموكي بريسكيت — 43 ريال
+
+🍝 الباستا
+• بيف بينك باستا — 31 ريال
+• ترافل ريغاتوني — 31 ريال
+
+🍟 الجانبيات
+• فرايز — 10 ريال
+• ترافل فرايز — 19 ريال
+• كرات الريزوتو — 22 ريال
+
+🥫 الصوصات
+• رانش — 2 ريال
+• باربكيو — 2 ريال
+• عسل سبايسي — 3 ريال
+
+🥤 المشروبات
+• بيبسي — 3 ريال
+• ماء — 1 ريال
 
 معلومات المطعم:
 - الموقع: الرس، ريف جلاس
@@ -138,126 +181,4 @@ export default async function handler(req, res) {
 - إذا رفض العميل الاقتراح انتقل للمرحلة التالية مباشرة.
 
 إذا أكد العميل بأي طريقة — قل له بالضبط هذه الجملة:
-تم تأكيد طلبك 🌷
-
-بعدها اسأله مباشرة:
-"متى تبي الطلب يا عزيزي؟ الحين أو وقت محدد؟ 🕐"
-
-إذا قال الحين أو الآن:
-"بيكون جاهز خلال 15 دقيقة إن شاء الله 🍕
-وإذا تبي توصيل أرسل لنا موقعك 📍"
-
-إذا حدد وقت معين مثل بعد ساعتين أو الساعة 8:
-"تمام يا عزيزي، بنجهز طلبك الساعة [الوقت المحدد] إن شاء الله 🍕
-وإذا تبي توصيل أرسل لنا موقعك قبل الوقت بشوي 📍"
-
-إذا طُلب منك الترحيب، استخدم هذا النص فقط:
-ياهلا 👋
-أنا Pizza Peel 🍕
-أزين بيتزا نابولي بالقصيم 😋
-وش مشتهي يا عزيزي؟
-`;
-
-  const userMessage = shouldGreet
-    ? `هذه أول تحية من العميل. رحب به فقط.\n\nرسالة العميل: ${body || "هلا"}`
-    : body || "هلا";
-
-  history.push({ role: "user", content: userMessage });
-
-  if (history.length > 10) {
-    history.splice(0, history.length - 10);
-  }
-
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 250,
-        system: systemPrompt,
-        messages: history
-      })
-    });
-
-    const data = await response.json();
-
-    const reply =
-      data?.content?.[0]?.text?.trim() ||
-      "ياهلا 👋 أنا Pizza Peel 🍕 وش مشتهي يا عزيزي؟";
-
-    history.push({ role: "assistant", content: reply });
-
-    if (shouldGreet && from) {
-      greetedUsers.add(from);
-    }
-
-    const isConfirmed = reply.includes("تم تأكيد طلبك");
-
-    if (isConfirmed || isLocation) {
-      const lastOrders = history
-        .slice(-6)
-        .map(m => `${m.role === "user" ? "العميل" : "البوت"}: ${m.content}`)
-        .join("\n");
-
-      await fetch(
-        "https://api.twilio.com/2010-04-01/Accounts/" +
-          process.env.TWILIO_ACCOUNT_SID +
-          "/Messages.json",
-        {
-          method: "POST",
-          headers: {
-            Authorization:
-              "Basic " +
-              Buffer.from(
-                process.env.TWILIO_ACCOUNT_SID +
-                  ":" +
-                  process.env.TWILIO_AUTH_TOKEN
-              ).toString("base64"),
-            "Content-Type": "application/x-www-form-urlencoded"
-          },
-          body: new URLSearchParams({
-            From: "whatsapp:+14155238886",
-            To: "whatsapp:+966553419919",
-            Body: `🔔 طلب جديد!\nمن: ${from}\n\n${lastOrders}${
-              isLocation
-                ? `\n\n📍 اللوكيشن: https://maps.google.com/?q=${latitude},${longitude}`
-                : ""
-            }`
-          })
-        }
-      );
-    }
-
-    const twiml = `
-<Response>
-<Message>${escapeXml(reply)}</Message>
-</Response>
-`;
-
-    res.setHeader("Content-Type", "text/xml; charset=utf-8");
-    return res.status(200).send(twiml);
-  } catch (err) {
-    const twiml = `
-<Response>
-<Message>ياهلا 👋 صار خطأ بسيط، جرب مرة ثانية.</Message>
-</Response>
-`;
-
-    res.setHeader("Content-Type", "text/xml; charset=utf-8");
-    return res.status(200).send(twiml);
-  }
-}
-
-function escapeXml(text) {
-  return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
+تم تأكيد طلبك
