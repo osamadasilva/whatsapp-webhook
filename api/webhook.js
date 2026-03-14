@@ -110,7 +110,7 @@ export default async function handler(req, res) {
 - التوصيل: 10 ريال — العميل يرسل اللوكيشن ونوصله
 - رقم التواصل: 0533373974
 
-المنيو:
+المنيو الكامل:
 
 🍕 البيتزا
 
@@ -181,4 +181,125 @@ export default async function handler(req, res) {
 - إذا رفض العميل الاقتراح انتقل للمرحلة التالية مباشرة.
 
 إذا أكد العميل بأي طريقة — قل له بالضبط هذه الجملة:
-تم تأكيد طلبك
+تم تأكيد طلبك 🌷
+
+بعدها اسأله مباشرة:
+"متى تبي الطلب يا عزيزي؟ الحين أو وقت محدد؟ 🕐"
+
+إذا قال الحين أو الآن:
+"بيكون جاهز خلال 15 دقيقة إن شاء الله 🍕
+وإذا تبي توصيل أرسل لنا موقعك 📍"
+
+إذا حدد وقت معين مثل بعد ساعتين أو الساعة 8:
+"تمام يا عزيزي، بنجهز طلبك الساعة [الوقت المحدد] إن شاء الله 🍕
+وإذا تبي توصيل أرسل لنا موقعك قبل الوقت بشوي 📍"
+
+إذا طُلب منك الترحيب، استخدم هذا النص فقط:
+ياهلا 👋
+أنا Pizza Peel 🍕
+أزين بيتزا نابولي بالقصيم 😋
+تبي تشوف المنيو؟
+`;
+
+  const userMessage = shouldGreet
+    ? `هذه أول تحية من العميل. رحب به فقط.\n\nرسالة العميل: ${body || "هلا"}`
+    : body || "هلا";
+
+  history.push({ role: "user", content: userMessage });
+
+  if (history.length > 10) {
+    history.splice(0, history.length - 10);
+  }
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 400,
+        system: systemPrompt,
+        messages: history
+      })
+    });
+
+    const data = await response.json();
+
+    const reply =
+      data?.content?.[0]?.text?.trim() ||
+      "ياهلا 👋 أنا Pizza Peel 🍕 وش مشتهي يا عزيزي؟";
+
+    history.push({ role: "assistant", content: reply });
+
+    if (shouldGreet && from) {
+      greetedUsers.add(from);
+    }
+
+    const matchedImage = Object.keys(menuImages).find(item =>
+      (body.includes(item) || reply.includes(item)) && menuImages[item] !== ""
+    );
+    const imageUrl = matchedImage ? menuImages[matchedImage] : null;
+
+    const isConfirmed = reply.includes("تم تأكيد طلبك");
+
+    if (isConfirmed || isLocation) {
+      const lastOrders = history
+        .slice(-6)
+        .map(m => `${m.role === "user" ? "العميل" : "البوت"}: ${m.content}`)
+        .join("\n");
+
+      await fetch(
+        "https://api.twilio.com/2010-04-01/Accounts/" +
+          process.env.TWILIO_ACCOUNT_SID +
+          "/Messages.json",
+        {
+          method: "POST",
+          headers: {
+            Authorization:
+              "Basic " +
+              Buffer.from(
+                process.env.TWILIO_ACCOUNT_SID +
+                  ":" +
+                  process.env.TWILIO_AUTH_TOKEN
+              ).toString("base64"),
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: new URLSearchParams({
+            From: "whatsapp:+14155238886",
+            To: "whatsapp:+966553419919",
+            Body: `🔔 طلب جديد!\nمن: ${from}\n\n${lastOrders}${
+              isLocation
+                ? `\n\n📍 اللوكيشن: https://maps.google.com/?q=${latitude},${longitude}`
+                : ""
+            }`
+          })
+        }
+      );
+    }
+
+    const twiml = imageUrl
+      ? `<Response><Message><Body>${escapeXml(reply)}</Body><Media>${imageUrl}</Media></Message></Response>`
+      : `<Response><Message>${escapeXml(reply)}</Message></Response>`;
+
+    res.setHeader("Content-Type", "text/xml; charset=utf-8");
+    return res.status(200).send(twiml);
+
+  } catch (err) {
+    const twiml = `<Response><Message>ياهلا 👋 صار خطأ بسيط، جرب مرة ثانية.</Message></Response>`;
+    res.setHeader("Content-Type", "text/xml; charset=utf-8");
+    return res.status(200).send(twiml);
+  }
+}
+
+function escapeXml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
