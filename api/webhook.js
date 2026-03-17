@@ -213,9 +213,9 @@ export default async function handler(req, res) {
     history.splice(0, history.length - 10);
   }
 
-  // رد مبكر لـ Twilio عشان ما ينتظر
-  res.setHeader("Content-Type", "text/xml; charset=utf-8");
-  res.status(200).send("<Response></Response>");
+  const twilioAuth = Buffer.from(
+    process.env.TWILIO_ACCOUNT_SID + ":" + process.env.TWILIO_AUTH_TOKEN
+  ).toString("base64");
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -249,10 +249,6 @@ export default async function handler(req, res) {
       (body.includes(item) || reply.includes(item)) && menuImages[item] !== ""
     );
     const imageUrl = matchedImage ? menuImages[matchedImage] : null;
-
-    const twilioAuth = Buffer.from(
-      process.env.TWILIO_ACCOUNT_SID + ":" + process.env.TWILIO_AUTH_TOKEN
-    ).toString("base64");
 
     // إرسال الرد عبر Twilio API مباشرة
     const msgParams = new URLSearchParams({
@@ -307,7 +303,13 @@ export default async function handler(req, res) {
       );
     }
 
+    // رد على Twilio Webhook
+    res.setHeader("Content-Type", "text/xml; charset=utf-8");
+    return res.status(200).send("<Response></Response>");
+
   } catch (err) {
     console.error("Error:", err);
+    res.setHeader("Content-Type", "text/xml; charset=utf-8");
+    return res.status(200).send("<Response></Response>");
   }
 }
