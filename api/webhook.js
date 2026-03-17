@@ -213,6 +213,10 @@ export default async function handler(req, res) {
     history.splice(0, history.length - 10);
   }
 
+  // رد مبكر لـ Twilio عشان ما ينتظر
+  res.setHeader("Content-Type", "text/xml; charset=utf-8");
+  res.status(200).send("<Response></Response>");
+
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -246,6 +250,34 @@ export default async function handler(req, res) {
     );
     const imageUrl = matchedImage ? menuImages[matchedImage] : null;
 
+    const twilioAuth = Buffer.from(
+      process.env.TWILIO_ACCOUNT_SID + ":" + process.env.TWILIO_AUTH_TOKEN
+    ).toString("base64");
+
+    // إرسال الرد عبر Twilio API مباشرة
+    const msgParams = new URLSearchParams({
+      From: "whatsapp:+966538633103",
+      To: from,
+      Body: reply
+    });
+
+    if (imageUrl) {
+      msgParams.append("MediaUrl0", imageUrl);
+    }
+
+    await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${twilioAuth}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: msgParams
+      }
+    );
+
+    // إرسال الطلب لرقمك بعد التأكيد
     const isConfirmed = reply.includes("تم تأكيد طلبك");
 
     if (isConfirmed || isLocation) {
@@ -255,19 +287,11 @@ export default async function handler(req, res) {
         .join("\n");
 
       await fetch(
-        "https://api.twilio.com/2010-04-01/Accounts/" +
-          process.env.TWILIO_ACCOUNT_SID +
-          "/Messages.json",
+        `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`,
         {
           method: "POST",
           headers: {
-            Authorization:
-              "Basic " +
-              Buffer.from(
-                process.env.TWILIO_ACCOUNT_SID +
-                  ":" +
-                  process.env.TWILIO_AUTH_TOKEN
-              ).toString("base64"),
+            Authorization: `Basic ${twilioAuth}`,
             "Content-Type": "application/x-www-form-urlencoded"
           },
           body: new URLSearchParams({
@@ -283,25 +307,7 @@ export default async function handler(req, res) {
       );
     }
 
-    const twiml = imageUrl
-      ? `<Response><Message><Body>${escapeXml(reply)}</Body><Media>${imageUrl}</Media></Message></Response>`
-      : `<Response><Message>${escapeXml(reply)}</Message></Response>`;
-
-    res.setHeader("Content-Type", "text/xml; charset=utf-8");
-    return res.status(200).send(twiml);
-
   } catch (err) {
-    const twiml = `<Response><Message>ياهلا 👋 صار خطأ بسيط، جرب مرة ثانية.</Message></Response>`;
-    res.setHeader("Content-Type", "text/xml; charset=utf-8");
-    return res.status(200).send(twiml);
+    console.error("Error:", err);
   }
-}
-
-function escapeXml(text) {
-  return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }
