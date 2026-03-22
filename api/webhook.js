@@ -2,50 +2,70 @@ const greetedUsers = new Set();
 const conversationHistory = new Map();
 
 export default async function handler(req, res) {
+
+  // ========== Webhook Verification (GET) ==========
+  if (req.method === "GET") {
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
+
+    if (mode === "subscribe" && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+      return res.status(200).send(challenge);
+    }
+    return res.status(403).send("Forbidden");
+  }
+
+  // ========== استقبال الرسائل (POST) ==========
   if (req.method !== "POST") {
     return res.status(405).send("Method Not Allowed");
   }
 
-  const latitude = req.body?.Latitude || "";
-  const longitude = req.body?.Longitude || "";
-  const isLocation = latitude && longitude;
-  const body = isLocation
-    ? `[لوكيشن العميل: https://maps.google.com/?q=${latitude},${longitude}]`
-    : (req.body?.Body || "").trim();
+  try {
+    const entry = req.body?.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+    const messages = value?.messages;
 
-  const from = req.body?.From || "";
-  const lowerBody = body.toLowerCase();
+    if (!messages || messages.length === 0) {
+      return res.status(200).send("OK");
+    }
 
-  const isGreeting =
-    lowerBody === "هلا" ||
-    lowerBody === "السلام عليكم" ||
-    lowerBody === "مرحبا" ||
-    lowerBody === "مساء الخير" ||
-    lowerBody === "صباح الخير";
+    const message = messages[0];
+    const from = message.from;
 
-  const shouldGreet = from && isGreeting && !greetedUsers.has(from);
+    let body = "";
+    let isLocation = false;
+    let latitude = "";
+    let longitude = "";
 
-  if (!conversationHistory.has(from)) {
-    conversationHistory.set(from, []);
-  }
-  const history = conversationHistory.get(from);
+    if (message.type === "location") {
+      latitude = message.location.latitude;
+      longitude = message.location.longitude;
+      isLocation = true;
+      body = `[لوكيشن العميل: https://maps.google.com/?q=${latitude},${longitude}]`;
+    } else if (message.type === "text") {
+      body = message.text.body.trim();
+    } else {
+      return res.status(200).send("OK");
+    }
 
-  const menuImages = {
-    "مارجريتا": "https://i.imgur.com/W8KLU4v.jpeg",
-    "بيبروني": "",
-    "مسخن": "",
-    "سموكي بريسكيت": "",
-    "ترفل": "",
-    "الأجبان الأربعة": "",
-    "الفريدو": "",
-    "بيف بينك باستا": "",
-    "ترافل ريغاتوني": "",
-    "كرات الريزوتو": "",
-    "فرايز": "",
-    "ترافل فرايز": "",
-  };
+    const lowerBody = body.toLowerCase();
 
-  const systemPrompt = `
+    const isGreeting =
+      lowerBody === "هلا" ||
+      lowerBody === "السلام عليكم" ||
+      lowerBody === "مرحبا" ||
+      lowerBody === "مساء الخير" ||
+      lowerBody === "صباح الخير";
+
+    const shouldGreet = from && isGreeting && !greetedUsers.has(from);
+
+    if (!conversationHistory.has(from)) {
+      conversationHistory.set(from, []);
+    }
+    const history = conversationHistory.get(from);
+
+    const systemPrompt = `
 أنت موظف واتساب لمطعم Pizza Peel 🍕
 
 تكلم بالعربية بلهجة قصيمية خفيفة محترمة.
@@ -203,22 +223,17 @@ export default async function handler(req, res) {
 تبي تشوف المنيو؟
 `;
 
-  const userMessage = shouldGreet
-    ? `هذه أول تحية من العميل. رحب به فقط.\n\nرسالة العميل: ${body || "هلا"}`
-    : body || "هلا";
+    const userMessage = shouldGreet
+      ? `هذه أول تحية من العميل. رحب به فقط.\n\nرسالة العميل: ${body || "هلا"}`
+      : body || "هلا";
 
-  history.push({ role: "user", content: userMessage });
+    history.push({ role: "user", content: userMessage });
 
-  if (history.length > 10) {
-    history.splice(0, history.length - 10);
-  }
+    if (history.length > 10) {
+      history.splice(0, history.length - 10);
+    }
 
-  const twilioAuth = Buffer.from(
-    process.env.TWILIO_ACCOUNT_SID + ":" + process.env.TWILIO_AUTH_TOKEN
-  ).toString("base64");
-
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "x-api-key": process.env.ANTHROPIC_API_KEY,
@@ -233,10 +248,9 @@ export default async function handler(req, res) {
       })
     });
 
-    const data = await response.json();
-
+    const claudeData = await claudeResponse.json();
     const reply =
-      data?.content?.[0]?.text?.trim() ||
+      claudeData?.content?.[0]?.text?.trim() ||
       "ياهلا 👋 أنا Pizza Peel 🍕 وش أخدمك فيه يا عزيزي؟ 😊";
 
     history.push({ role: "assistant", content: reply });
@@ -245,35 +259,23 @@ export default async function handler(req, res) {
       greetedUsers.add(from);
     }
 
-    const matchedImage = Object.keys(menuImages).find(item =>
-      (body.includes(item) || reply.includes(item)) && menuImages[item] !== ""
-    );
-    const imageUrl = matchedImage ? menuImages[matchedImage] : null;
-
-    // إرسال الرد عبر Twilio API مباشرة
-    const msgParams = new URLSearchParams({
-      From: "whatsapp:+966538633103",
-      To: from,
-      Body: reply
-    });
-
-    if (imageUrl) {
-      msgParams.append("MediaUrl0", imageUrl);
-    }
-
     await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`,
+      `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_ID}/messages`,
       {
         method: "POST",
         headers: {
-          Authorization: `Basic ${twilioAuth}`,
-          "Content-Type": "application/x-www-form-urlencoded"
+          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json"
         },
-        body: msgParams
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: from,
+          type: "text",
+          text: { body: reply }
+        })
       }
     );
 
-    // إرسال الطلب لرقمك بعد التأكيد
     const isConfirmed = reply.includes("تم تأكيد طلبك");
 
     if (isConfirmed || isLocation) {
@@ -283,33 +285,33 @@ export default async function handler(req, res) {
         .join("\n");
 
       await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`,
+        `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_ID}/messages`,
         {
           method: "POST",
           headers: {
-            Authorization: `Basic ${twilioAuth}`,
-            "Content-Type": "application/x-www-form-urlencoded"
+            Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+            "Content-Type": "application/json"
           },
-          body: new URLSearchParams({
-            From: "whatsapp:+966538633103",
-            To: "whatsapp:+966553419919",
-            Body: `🔔 طلب جديد!\nمن: ${from}\n\n${lastOrders}${
-              isLocation
-                ? `\n\n📍 اللوكيشن: https://maps.google.com/?q=${latitude},${longitude}`
-                : ""
-            }`
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: process.env.OWNER_PHONE,
+            type: "text",
+            text: {
+              body: `🔔 طلب جديد!\nمن: ${from}\n\n${lastOrders}${
+                isLocation
+                  ? `\n\n📍 اللوكيشن: https://maps.google.com/?q=${latitude},${longitude}`
+                  : ""
+              }`
+            }
           })
         }
       );
     }
 
-    // رد على Twilio Webhook
-    res.setHeader("Content-Type", "text/xml; charset=utf-8");
-    return res.status(200).send("<Response></Response>");
+    return res.status(200).send("OK");
 
   } catch (err) {
     console.error("Error:", err);
-    res.setHeader("Content-Type", "text/xml; charset=utf-8");
-    return res.status(200).send("<Response></Response>");
+    return res.status(200).send("OK");
   }
 }
