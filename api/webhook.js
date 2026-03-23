@@ -17,7 +17,39 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
-      console.log("📩 BODY:", JSON.stringify(req.body, null, 2));
+      const body = req.body;
+
+      console.log("📩 BODY:", JSON.stringify(body, null, 2));
+
+      const message =
+        body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+      if (message) {
+        const from = message.from;
+
+        console.log("👤 From:", from);
+
+        // 👇 إرسال رد تلقائي
+        await fetch(
+          `https://graph.facebook.com/v23.0/${process.env.WHATSAPP_PHONE_ID}/messages`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              to: from,
+              type: "text",
+              text: {
+                body: "🔥 تم استلام رسالتك!",
+              },
+            }),
+          }
+        );
+      }
+
       return res.status(200).send("OK");
     }
 
