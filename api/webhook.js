@@ -12,20 +12,18 @@ export default async function handler(req, res) {
         console.log("✅ Verified");
         return res.status(200).send(challenge);
       } else {
-        return res.sendStatus(403);
+        return res.status(403).send("Forbidden");
       }
     }
 
     if (req.method === "POST") {
       console.log("📩 BODY:", JSON.stringify(req.body, null, 2));
-
-      // لا تسوي أي processing الآن
-      return res.sendStatus(200);
+      return res.status(200).send("OK");
     }
 
-    return res.sendStatus(405);
+    return res.status(405).send("Method Not Allowed");
   } catch (error) {
     console.error("❌ ERROR:", error);
-    return res.sendStatus(200); // مهم: لا تخليها 500
+    return res.status(200).send("OK");
   }
 }
