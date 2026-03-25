@@ -24,10 +24,7 @@ module.exports = async function handler(req, res) {
     const changes = entry?.changes?.[0];
     const value = changes?.value;
 
-    console.log("BODY:", JSON.stringify(req.body));
-
     if (value?.statuses) {
-      console.log("STATUS:", JSON.stringify(value.statuses));
       return res.status(200).send("OK");
     }
 
@@ -61,38 +58,38 @@ module.exports = async function handler(req, res) {
       longitude = message.location.longitude;
       isLocation = true;
       body = "[لوكيشن العميل: https://maps.google.com/?q=" + latitude + "," + longitude + "]";
+    } else if (message.type === "button") {
+      const payload = message.button?.payload || "";
+      if (payload === "قائمة الطعام") {
+        body = "المنيو";
+      } else if (payload === "الموقع والمعلومات") {
+        body = "اعطني معلومات المطعم والموقع";
+      } else {
+        body = payload;
+      }
     } else if (message.type === "interactive") {
       const buttonReply = message.interactive?.button_reply?.title || "";
-      console.log("INTERACTIVE:", JSON.stringify(message.interactive));
       if (buttonReply === "الموقع والمعلومات") {
         body = "اعطني معلومات المطعم والموقع";
       } else if (buttonReply === "قائمة الطعام") {
         body = "المنيو";
       } else {
-        body = buttonReply || JSON.stringify(message.interactive);
+        body = buttonReply;
       }
     } else if (message.type === "text") {
       body = message.text.body.trim();
     } else {
-      console.log("UNKNOWN TYPE:", message.type);
       return res.status(200).send("OK");
     }
 
     const lowerBody = body.toLowerCase();
 
     const isGreeting =
-  lowerBody === "هلا" ||
-  lowerBody === "السلام عليكم" ||
-  lowerBody === "مرحبا" ||
-  lowerBody === "مساء الخير" ||
-  lowerBody === "صباح الخير";
-
-if (body === "قائمة الطعام") {
-  body = "المنيو";
-}
-if (body === "الموقع والمعلومات") {
-  body = "اعطني معلومات المطعم والموقع";
-}
+      lowerBody === "هلا" ||
+      lowerBody === "السلام عليكم" ||
+      lowerBody === "مرحبا" ||
+      lowerBody === "مساء الخير" ||
+      lowerBody === "صباح الخير";
 
     if (isGreeting && !greetedUsers.has(from)) {
       greetedUsers.add(from);
