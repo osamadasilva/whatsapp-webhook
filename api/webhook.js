@@ -81,11 +81,18 @@ module.exports = async function handler(req, res) {
     const lowerBody = body.toLowerCase();
 
     const isGreeting =
-      lowerBody === "هلا" ||
-      lowerBody === "السلام عليكم" ||
-      lowerBody === "مرحبا" ||
-      lowerBody === "مساء الخير" ||
-      lowerBody === "صباح الخير";
+  lowerBody === "هلا" ||
+  lowerBody === "السلام عليكم" ||
+  lowerBody === "مرحبا" ||
+  lowerBody === "مساء الخير" ||
+  lowerBody === "صباح الخير";
+
+if (body === "قائمة الطعام") {
+  body = "المنيو";
+}
+if (body === "الموقع والمعلومات") {
+  body = "اعطني معلومات المطعم والموقع";
+}
 
     if (isGreeting && !greetedUsers.has(from)) {
       greetedUsers.add(from);
