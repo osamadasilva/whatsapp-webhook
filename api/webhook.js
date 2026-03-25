@@ -24,7 +24,10 @@ module.exports = async function handler(req, res) {
     const changes = entry?.changes?.[0];
     const value = changes?.value;
 
+    console.log("BODY:", JSON.stringify(req.body));
+
     if (value?.statuses) {
+      console.log("STATUS:", JSON.stringify(value.statuses));
       return res.status(200).send("OK");
     }
 
@@ -60,16 +63,18 @@ module.exports = async function handler(req, res) {
       body = "[لوكيشن العميل: https://maps.google.com/?q=" + latitude + "," + longitude + "]";
     } else if (message.type === "interactive") {
       const buttonReply = message.interactive?.button_reply?.title || "";
+      console.log("INTERACTIVE:", JSON.stringify(message.interactive));
       if (buttonReply === "الموقع والمعلومات") {
         body = "اعطني معلومات المطعم والموقع";
       } else if (buttonReply === "قائمة الطعام") {
         body = "المنيو";
       } else {
-        body = buttonReply;
+        body = buttonReply || JSON.stringify(message.interactive);
       }
     } else if (message.type === "text") {
       body = message.text.body.trim();
     } else {
+      console.log("UNKNOWN TYPE:", message.type);
       return res.status(200).send("OK");
     }
 
@@ -119,10 +124,7 @@ module.exports = async function handler(req, res) {
 فهم السياق مهم جداً:
 
 إذا كان العميل يسأل عن صنف معين ثم قال:
-"عطني وحده"
-"أبي وحده"
-"خلاص وحدة"
-
+"عطني وحده" أو "أبي وحده" أو "خلاص وحدة"
 فالمقصود هو نفس الصنف الذي كان يتحدث عنه العميل آخر مرة.
 
 لا تغيّر الصنف إلى بيتزا إذا كان الحديث عن باستا أو جانبيات.
