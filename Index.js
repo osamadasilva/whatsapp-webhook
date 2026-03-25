@@ -73,7 +73,7 @@ description: “اعرف تفاصيل التوصيل والاستلام”
 );
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
 
 // ========== Webhook Verification (GET) ==========
 if (req.method === “GET”) {
@@ -122,13 +122,11 @@ if (message.type === "location") {
   body = `[لوكيشن العميل: https://maps.google.com/?q=${latitude},${longitude}]`;
 
 } else if (message.type === "interactive") {
-  // العميل ضغط على خيار من القائمة
   const buttonId = message.interactive?.list_reply?.id;
 
   if (!conversationHistory.has(from)) {
     conversationHistory.set(from, []);
   }
-  const history = conversationHistory.get(from);
 
   if (buttonId === "show_menu") {
     body = "المنيو";
@@ -153,7 +151,7 @@ const isGreeting =
   lowerBody === "مساء الخير" ||
   lowerBody === "صباح الخير";
 
-// ========== إذا كانت تحية أولى → أرسل القائمة مباشرة ==========
+// ========== إذا كانت تحية أولى → أرسل القائمة ==========
 if (isGreeting && !greetedUsers.has(from)) {
   greetedUsers.add(from);
   await sendWelcomeList(from);
