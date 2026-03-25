@@ -1,6 +1,7 @@
 const greetedUsers = new Set();
 const conversationHistory = new Map();
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
+ {
 // ========== Webhook Verification (GET) ==========
 if (req.method === “GET”) {
 const mode = req.query[“hub.mode”];
