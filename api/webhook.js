@@ -58,6 +58,15 @@ module.exports = async function handler(req, res) {
       longitude = message.location.longitude;
       isLocation = true;
       body = "[لوكيشن العميل: https://maps.google.com/?q=" + latitude + "," + longitude + "]";
+    } else if (message.type === "interactive") {
+      const buttonReply = message.interactive?.button_reply?.title || "";
+      if (buttonReply === "الموقع والمعلومات") {
+        body = "اعطني معلومات المطعم والموقع";
+      } else if (buttonReply === "قائمة الطعام") {
+        body = "المنيو";
+      } else {
+        body = buttonReply;
+      }
     } else if (message.type === "text") {
       body = message.text.body.trim();
     } else {
@@ -73,7 +82,26 @@ module.exports = async function handler(req, res) {
       lowerBody === "مساء الخير" ||
       lowerBody === "صباح الخير";
 
-    const shouldGreet = from && isGreeting && !greetedUsers.has(from);
+    if (isGreeting && !greetedUsers.has(from)) {
+      greetedUsers.add(from);
+      await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + process.env.WHATSAPP_TOKEN,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: from,
+          type: "template",
+          template: {
+            name: "menu",
+            language: { code: "ar" }
+          }
+        })
+      });
+      return res.status(200).send("OK");
+    }
 
     if (!conversationHistory.has(from)) {
       conversationHistory.set(from, []);
@@ -97,22 +125,15 @@ module.exports = async function handler(req, res) {
 
 فالمقصود هو نفس الصنف الذي كان يتحدث عنه العميل آخر مرة.
 
-مثال:
-العميل: وش ترافل ريغاتوني
-الموظف: يشرح الباستا
-العميل: عطنا وحده
-المقصود: ترافل ريغاتوني باستا وليس بيتزا.
-
 لا تغيّر الصنف إلى بيتزا إذا كان الحديث عن باستا أو جانبيات.
 
 مهم جداً:
 - لا تكرر الرسالة الترحيبية.
-- استخدم الترحيب فقط إذا وصلك تنبيه بأن هذه أول تحية من العميل.
-- إذا لم تكن أول تحية، جاوب مباشرة على السؤال بدون ترحيب.
-- إذا قال العميل "المنيو" أو "ارسل المنيو" أو "اعرض المنيو" أو "وش عندكم" اعرض المنيو كامل فوراً بدون أي سؤال.
-- إذا أرسل العميل لوكيشن، رد عليه: "تم استلام موقعك 📍 والسائق في الطريق إليك إن شاء الله 🛵"
+- إذا قال العميل "المنيو" أو "وش عندكم" اعرض المنيو كامل فوراً.
+- إذا أرسل العميل لوكيشن، رد: "تم استلام موقعك 📍 والسائق في الطريق إليك إن شاء الله 🛵"
+- إذا طلب معلومات المطعم أو الموقع، أعطه المعلومات كاملة.
 
-إذا سأل العميل عن المنيو اعرضه بهذا الشكل بالضبط:
+إذا سأل عن المنيو:
 
 🍕 البيتزا
 • مارجريتا — 32 ريال
@@ -144,7 +165,7 @@ module.exports = async function handler(req, res) {
 معلومات المطعم:
 - الموقع: الرس، ريف جلاس
 - الدوام: من 4 مساء إلى 1 صباحاً
-- التوصيل: 10 ريال — العميل يرسل اللوكيشن ونوصله
+- التوصيل: 10 ريال
 - رقم التواصل: 0533373974
 
 المنيو الكامل:
@@ -190,59 +211,35 @@ module.exports = async function handler(req, res) {
 - بيبسي — 3
 - ماء — 1
 
-أسلوب البيع — مهم جداً:
+أسلوب البيع:
 
 المرحلة 1 — بعد طلب البيتزا:
-اقترح جانبي أو باستا مرة واحدة فقط:
 "تبي معاها جانبي يا عزيزي؟ عندنا فرايز 🍟 أو كرات ريزوتو 🧆 أو باستا 🍝"
 
-المرحلة 2 — بعد اكتمال الطلب الرئيسي:
-اقترح صوص أو مشروب مرة واحدة فقط:
+المرحلة 2 — بعد اكتمال الطلب:
 "تبي صوص معاه؟ رانش أو باربكيو أو عسل سبايسي 🥫"
-أو: "نضيف بيبسي؟ 🥤 بثلاثة ريال"
 
-المرحلة 3 — بعد الاقتراحات:
-اعرض الطلب النهائي بهذا الأسلوب:
-
+المرحلة 3 — اعرض الطلب النهائي:
 طلبك كذا يا عزيزي 👇
-
-ثم اذكر الأصناف والأسعار
-ثم اكتب المجموع
-
+ثم الأصناف والأسعار والمجموع
 بعدها اسأل: هل نأكد؟
 
-قواعد البيع:
-- لا تكرر نفس الاقتراح أبداً.
-- اقتراح واحد فقط في كل مرحلة.
-- لا تقترح فرايز بمفردها — قدم خيارات.
-- إذا رفض العميل الاقتراح انتقل للمرحلة التالية مباشرة.
-
-إذا أكد العميل بأي طريقة — قل له بالضبط هذه الجملة:
+إذا أكد العميل — قل بالضبط:
 تم تأكيد طلبك 🌷
 
-بعدها اسأله مباشرة:
+بعدها اسأله:
 "متى تبي الطلب يا عزيزي؟ الحين أو وقت محدد؟ 🕐"
 
-إذا قال الحين أو الآن:
+إذا قال الحين:
 "بيكون جاهز خلال 15 دقيقة إن شاء الله 🍕
 وإذا تبي توصيل أرسل لنا موقعك 📍"
 
-إذا حدد وقت معين مثل بعد ساعتين أو الساعة 8:
-"تمام يا عزيزي، بنجهز طلبك الساعة [الوقت المحدد] إن شاء الله 🍕
+إذا حدد وقت:
+"تمام يا عزيزي، بنجهز طلبك الساعة [الوقت] إن شاء الله 🍕
 وإذا تبي توصيل أرسل لنا موقعك قبل الوقت بشوي 📍"
-
-إذا طُلب منك الترحيب، استخدم هذا النص فقط:
-ياهلا 👋
-أنا Pizza Peel 🍕
-أزين بيتزا نابولي بالقصيم 😋
-تبي تشوف المنيو؟
 `;
 
-    const userMessage = shouldGreet
-      ? "هذه أول تحية من العميل. رحب به فقط.\n\nرسالة العميل: " + (body || "هلا")
-      : body || "هلا";
-
-    history.push({ role: "user", content: userMessage });
+    history.push({ role: "user", content: body });
 
     if (history.length > 10) {
       history.splice(0, history.length - 10);
@@ -267,10 +264,6 @@ module.exports = async function handler(req, res) {
     const reply = claudeData?.content?.[0]?.text?.trim() || "ياهلا 👋 أنا Pizza Peel 🍕 وش أخدمك فيه يا عزيزي؟ 😊";
 
     history.push({ role: "assistant", content: reply });
-
-    if (shouldGreet && from) {
-      greetedUsers.add(from);
-    }
 
     await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
       method: "POST",
