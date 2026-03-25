@@ -23,6 +23,11 @@ module.exports = async function handler(req, res) {
     const entry = req.body?.entry?.[0];
     const changes = entry?.changes?.[0];
     const value = changes?.value;
+
+    if (value?.statuses) {
+      return res.status(200).send("OK");
+    }
+
     const messages = value?.messages;
 
     if (!messages || messages.length === 0) {
