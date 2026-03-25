@@ -1,5 +1,6 @@
 const greetedUsers = new Set();
 const conversationHistory = new Map();
+const processedMessages = new Set();
 
 module.exports = async function handler(req, res) {
 
@@ -30,6 +31,17 @@ module.exports = async function handler(req, res) {
 
     const message = messages[0];
     const from = message.from;
+    const messageId = message.id;
+
+    if (processedMessages.has(messageId)) {
+      return res.status(200).send("OK");
+    }
+    processedMessages.add(messageId);
+
+    if (processedMessages.size > 1000) {
+      const first = processedMessages.values().next().value;
+      processedMessages.delete(first);
+    }
 
     let body = "";
     let isLocation = false;
