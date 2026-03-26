@@ -309,7 +309,7 @@ module.exports = async function handler(req, res) {
     const isCancelled = reply.includes("تم إلغاء طلبك");
     const isEditing = reply.includes("هل نأكد الطلب الجديد");
 
-    if ((isConfirmed && !isEditing) || isLocation) {
+    if ((isConfirmed && !isEditing && isOpen) || isLocation) {
       const lastOrders = history
         .slice(-6)
         .map(function(m) { return (m.role === "user" ? "العميل" : "البوت") + ": " + m.content; })
