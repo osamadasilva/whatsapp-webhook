@@ -141,14 +141,12 @@ module.exports = async function handler(req, res) {
 
 --- تعديل أو إلغاء الطلب ---
 
-إذا قال العميل بعد التأكيد أي كلمة مثل:
-"عدّل" أو "غيّر" أو "بدّل" أو "أضف" أو "احذف" أو "الغِ" أو "ما أبي" أو "وقّف"
+إذا قال العميل في أي وقت بعد تأكيد الطلب أي كلمة أو جملة تدل على الإلغاء مثل:
+"كنسل" أو "لا" أو "ما أبي" أو "وقّف" أو "الغِ" أو "مو ذا" أو "بكره" أو "ما راح آخذ" أو أي عبارة فيها رفض أو تراجع عن الطلب —
+قل له بالضبط: "تم إلغاء طلبك يا عزيزي 🙏 إذا تبغى تطلب مرة ثانية أنا هنا 😊"
 
-اتبع هذه القواعد:
-
-1. إذا طلب تعديل — عدّل الطلب معه وأعرضه من جديد واسأله: هل نأكد الطلب الجديد؟
-2. إذا طلب إلغاء كامل — قل له: "تم إلغاء طلبك يا عزيزي 🙏 إذا تبغى تطلب مرة ثانية أنا هنا 😊"
-3. لا ترسل أي تأكيد نهائي للمطعم إلا بعد ما يقول العميل "نعم" أو "أكد" أو "صح" على الطلب الجديد.
+إذا طلب تعديل — عدّل الطلب معه وأعرضه من جديد واسأله: هل نأكد الطلب الجديد؟
+لا ترسل أي تأكيد نهائي إلا بعد ما يقول العميل نعم أو أكد أو صح على الطلب الجديد.
 
 إذا سأل عن المنيو:
 
@@ -297,7 +295,8 @@ module.exports = async function handler(req, res) {
     });
 
     const isConfirmed = reply.includes("تم تأكيد طلبك");
-    const isEditing = reply.includes("تم إلغاء طلبك") || reply.includes("هل نأكد الطلب الجديد");
+    const isCancelled = reply.includes("تم إلغاء طلبك");
+    const isEditing = reply.includes("هل نأكد الطلب الجديد");
 
     if ((isConfirmed && !isEditing) || isLocation) {
       const lastOrders = history
@@ -317,6 +316,29 @@ module.exports = async function handler(req, res) {
           type: "text",
           text: {
             body: "🔔 طلب جديد!\nمن: " + from + "\n\n" + lastOrders + (isLocation ? "\n\n📍 اللوكيشن: https://maps.google.com/?q=" + latitude + "," + longitude : "")
+          }
+        })
+      });
+    }
+
+    if (isCancelled) {
+      const lastOrders = history
+        .slice(-6)
+        .map(function(m) { return (m.role === "user" ? "العميل" : "البوت") + ": " + m.content; })
+        .join("\n");
+
+      await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + process.env.WHATSAPP_TOKEN,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: process.env.OWNER_PHONE,
+          type: "text",
+          text: {
+            body: "❌ تم إلغاء الطلب!\nمن: " + from + "\n\n" + lastOrders
           }
         })
       });
