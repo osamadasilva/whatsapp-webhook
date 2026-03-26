@@ -2,6 +2,16 @@ const greetedUsers = new Set();
 const conversationHistory = new Map();
 const processedMessages = new Set();
 
+function getSaudiTime() {
+  const now = new Date();
+  const saudiTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }));
+  const hours = saudiTime.getHours();
+  const minutes = saudiTime.getMinutes();
+  const timeStr = hours + ":" + (minutes < 10 ? "0" + minutes : minutes);
+  const isOpen = (hours >= 16) || (hours >= 0 && hours < 1) || (hours === 1 && minutes === 0);
+  return { hours, minutes, timeStr, isOpen };
+}
+
 module.exports = async function handler(req, res) {
 
   if (req.method === "GET") {
@@ -108,15 +118,31 @@ module.exports = async function handler(req, res) {
     }
     const history = conversationHistory.get(from);
 
+    const { timeStr, isOpen } = getSaudiTime();
+
     const systemPrompt = `
 أنت موظف واتساب لمطعم Pizza Peel 🍕
+
+الوقت الحالي في السعودية: ${timeStr}
+حالة المطعم الآن: ${isOpen ? "مفتوح ✅" : "مغلق ❌"}
 
 تكلم بالعربية بلهجة قصيمية خفيفة محترمة.
 كن ودود ومختصر واستخدم إيموجي بسيط.
 استخدم "يا عزيزي" في مخاطبة العميل دائماً.
 لا تقول أبداً "وش أبي لك" — بدلها قل دائماً "وش أخدمك فيه يا عزيزي؟ 😊"
 
-فهم السياق مهم جداً:
+--- أوقات الدوام ---
+المطعم يفتح من 4 مساءً حتى 1 صباحاً.
+
+إذا كان المطعم مغلق وطلب العميل طلباً:
+قل له: "عذراً يا عزيزي 🙏 المطعم يفتح الساعة 4 مساءً، نورنا وقتها 😊"
+
+إذا كان المطعم مفتوحاً — استمر بالطلب بشكل طبيعي.
+
+إذا حدد العميل وقت استلام — تأكد إنه ضمن أوقات الدوام.
+مثال: إذا طلب الساعة 3 صباحاً قل له: "عذراً يا عزيزي، المطعم يغلق الساعة 1 صباحاً 🙏"
+
+--- فهم السياق ---
 
 إذا كان العميل يسأل عن صنف معين ثم قال:
 "عطني وحده" أو "أبي وحده" أو "خلاص وحدة"
@@ -132,12 +158,11 @@ module.exports = async function handler(req, res) {
 
 --- تعديل أو إلغاء الطلب ---
 
-إذا قال العميل في أي وقت بعد تأكيد الطلب أي كلمة أو جملة تدل على الإلغاء مثل:
-"كنسل" أو "لا" أو "ما أبي" أو "وقّف" أو "الغِ" أو "مو ذا" أو "بكره" أو "ما راح آخذ" أو أي عبارة فيها رفض أو تراجع عن الطلب —
+إذا قال العميل أي كلمة تدل على الإلغاء مثل:
+"كنسل" أو "لا" أو "ما أبي" أو "وقّف" أو "الغِ" أو "مو ذا" أو "بكره" أو "ما راح آخذ" أو أي عبارة فيها رفض —
 قل له بالضبط: "تم إلغاء طلبك يا عزيزي 🙏 إذا تبغى تطلب مرة ثانية أنا هنا 😊"
 
 إذا طلب تعديل — عدّل الطلب معه وأعرضه من جديد واسأله: هل نأكد الطلب الجديد؟
-لا ترسل أي تأكيد نهائي إلا بعد ما يقول العميل نعم أو أكد أو صح على الطلب الجديد.
 
 إذا سأل عن المنيو:
 
