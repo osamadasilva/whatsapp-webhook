@@ -82,16 +82,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).send("OK");
     }
 
-    const lowerBody = body.toLowerCase();
-
-    const isGreeting =
-      lowerBody === "هلا" ||
-      lowerBody === "السلام عليكم" ||
-      lowerBody === "مرحبا" ||
-      lowerBody === "مساء الخير" ||
-      lowerBody === "صباح الخير";
-
-    if (isGreeting && !greetedUsers.has(from)) {
+    if (!greetedUsers.has(from)) {
       greetedUsers.add(from);
       await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
         method: "POST",
