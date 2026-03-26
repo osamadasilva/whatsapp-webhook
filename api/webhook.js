@@ -92,6 +92,8 @@ module.exports = async function handler(req, res) {
       return res.status(200).send("OK");
     }
 
+    const { timeStr, isOpen } = getSaudiTime();
+
     if (!greetedUsers.has(from)) {
       greetedUsers.add(from);
       await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
@@ -113,23 +115,33 @@ module.exports = async function handler(req, res) {
       return res.status(200).send("OK");
     }
 
+    if (!isOpen && !isLocation) {
+      await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + process.env.WHATSAPP_TOKEN,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: from,
+          type: "text",
+          text: { body: "عذراً يا عزيزي 🙏 المطعم مغلق الحين، دوامنا من 4 مساءً حتى 1 صباحاً ⏰\nنورنا وقتها 😊" }
+        })
+      });
+      return res.status(200).send("OK");
+    }
+
     if (!conversationHistory.has(from)) {
       conversationHistory.set(from, []);
     }
     const history = conversationHistory.get(from);
 
-    const { timeStr, isOpen } = getSaudiTime();
-
     const systemPrompt = `
 أنت موظف واتساب لمطعم Pizza Peel 🍕
 
 الوقت الحالي في السعودية: ${timeStr}
-حالة المطعم: ${isOpen ? "مفتوح ✅" : "مغلق ❌"}
-
-مهم جداً بخصوص الدوام:
-- أوقات العمل: من 4 مساءً (16:00) حتى 1 صباحاً (01:00)
-- إذا كان المطعم مغلق لا تقبل أي طلب مهما قال العميل وقل له: "عذراً يا عزيزي 🙏 المطعم يفتح الساعة 4 مساءً، نورنا وقتها 😊"
-- إذا حدد العميل وقت استلام خارج أوقات الدوام قل له: "عذراً يا عزيزي، هذا الوقت خارج دوامنا 🙏 نحن نعمل من 4 مساءً حتى 1 صباحاً"
+حالة المطعم: مفتوح ✅
 
 تكلم بالعربية بلهجة قصيمية خفيفة محترمة.
 كن ودود ومختصر واستخدم إيموجي بسيط.
@@ -149,6 +161,7 @@ module.exports = async function handler(req, res) {
 - إذا قال العميل "المنيو" أو "وش عندكم" اعرض المنيو كامل فوراً.
 - إذا أرسل العميل لوكيشن، رد: "تم استلام موقعك 📍 والسائق في الطريق إليك إن شاء الله 🛵"
 - إذا طلب معلومات المطعم أو الموقع، أعطه المعلومات كاملة.
+- إذا حدد العميل وقت استلام خارج أوقات الدوام (4 مساءً - 1 صباحاً) قل له: "عذراً يا عزيزي، هذا الوقت خارج دوامنا 🙏 نحن نعمل من 4 مساءً حتى 1 صباحاً"
 
 --- تعديل أو إلغاء الطلب ---
 
@@ -309,7 +322,7 @@ module.exports = async function handler(req, res) {
     const isCancelled = reply.includes("تم إلغاء طلبك");
     const isEditing = reply.includes("هل نأكد الطلب الجديد");
 
-    if ((isConfirmed && !isEditing && isOpen) || isLocation) {
+    if ((isConfirmed && !isEditing) || isLocation) {
       const lastOrders = history
         .slice(-6)
         .map(function(m) { return (m.role === "user" ? "العميل" : "البوت") + ": " + m.content; })
