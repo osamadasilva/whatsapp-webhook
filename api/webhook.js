@@ -130,6 +130,29 @@ module.exports = async function handler(req, res) {
     }
 
     const history = await getHistory(from);
+
+    const lastBotMessage = [...history].reverse().find(m => m.role === "assistant")?.content || "";
+    const isConfirmationQuestion = lastBotMessage.includes("هل نأكد") || lastBotMessage.includes("هل تأكد");
+    const userSaidYes = ["يس","نعم","اكد","صح","تمام","اوك","ايه","ابي","خلاص","اقولك ايه","وليها","yes","ok"].some(w => body.trim().includes(w));
+
+    if (isConfirmationQuestion && userSaidYes) {
+      const confirmReply = "تم تأكيد طلبك 🌷";
+      await saveMessage(from, "user", body);
+      await saveMessage(from, "assistant", confirmReply);
+      await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", to: from, type: "text", text: { body: confirmReply } })
+      });
+      const lastOrders = history.slice(-6).map(m => (m.role === "user" ? "العميل" : "البوت") + ": " + m.content).join("\n");
+      await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", to: process.env.OWNER_PHONE, type: "text", text: { body: "🔔 طلب جديد!\nمن: " + from + "\n\n" + lastOrders } })
+      });
+      return res.status(200).send("OK");
+    }
+
     const { timeStr, isOpen } = getSaudiTime();
 
     const systemPrompt = `
@@ -271,17 +294,7 @@ module.exports = async function handler(req, res) {
 طلبك كذا يا عزيزي 👇
 ثم الأصناف والأسعار والمجموع
 بعدها اسأل: هل نأكد؟
-
---- تأكيد الطلب ---
---- تأكيد الطلب ---
-
-إذا عرضت الطلب النهائي وسألت "هل نأكد؟" أو "هل تأكد الطلب؟" —
-وجاء رد العميل بأي إيجاب مثل: نعم، يس، اكد، صح، تمام، اوك، وليها، ايه، ابي، خلاص —
-لا تعرض الطلب مرة ثانية أبداً.
-قل فقط هذه الجملة ولا شيء غيرها:
-تم تأكيد طلبك 🌷
-
-هذه القاعدة أهم من أي قاعدة أخرى. لا استثناء.`;
+`;
 
     await saveMessage(from, "user", body);
 
