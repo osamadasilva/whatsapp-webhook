@@ -132,7 +132,7 @@ module.exports = async function handler(req, res) {
     const history = await getHistory(from);
 
     const lastBotMessage = [...history].reverse().find(m => m.role === "assistant")?.content || "";
-    const isConfirmationQuestion = lastBotMessage.includes("هل نأكد") || lastBotMessage.includes("هل تأكد");
+  const isConfirmationQuestion = lastBotMessage.includes("هل نأكد") || lastBotMessage.includes("هل تأكد") || lastBotMessage.includes("نأكد؟") || lastBotMessage.includes("تأكد؟");
     const userSaidYes = ["يس","نعم","اكد","صح","تمام","اوك","ايه","ابي","خلاص","اقولك ايه","وليها","yes","ok"].some(w => body.trim().includes(w));
 
     if (isConfirmationQuestion && userSaidYes) {
