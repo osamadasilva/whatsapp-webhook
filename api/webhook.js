@@ -60,6 +60,12 @@ function getSaudiTime() {
   return { hours, minutes, timeStr, isOpen };
 }
 
+function matchesWord(text, word) {
+  const t = text.trim().toLowerCase();
+  const w = word.toLowerCase();
+  return t === w || t.startsWith(w + " ") || t.endsWith(" " + w) || t.includes(" " + w + " ");
+}
+
 module.exports = async function handler(req, res) {
 
   if (req.method === "GET") {
@@ -140,11 +146,10 @@ module.exports = async function handler(req, res) {
     const currentStatus = await getStatus(from);
     const lastOrder = await getLastOrder(from);
 
-    // اذا العميل في مرحلة التأكيد
     if (currentStatus === "awaiting_confirmation") {
-      const yesWords = ["يس","نعم","اكد","صح","تمام","اوك","ايه","ابي","خلاص","وليها","yes","ok","اقولك"];
-      const noWords = ["لا","كنسل","ما ابي","الغ","وقف","ما راح"];
-      const saidYes = yesWords.some(w => body.includes(w));
+      const yesWords = ["يس","نعم","اكد","صح","تمام","اوك","ايه","خلاص","وليها","yes","ok","اقولك"];
+      const noWords = ["كنسل","الغ","وقف","ما راح آخذ","إلغاء","لا اريد","لا ابي"];
+      const saidYes = yesWords.some(w => matchesWord(body, w));
       const saidNo = noWords.some(w => body.includes(w));
 
       if (saidYes) {
