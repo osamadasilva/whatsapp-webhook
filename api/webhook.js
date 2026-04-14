@@ -22,6 +22,19 @@ async function clearHistory(phone) {
   await supabase.from('conversations').delete().eq('phone_number', phone);
 }
 
+async function getStatus(phone) {
+  const { data } = await supabase.from('order_status').select('status').eq('phone_number', phone).single();
+  return data?.status || null;
+}
+
+async function setStatus(phone, status) {
+  await supabase.from('order_status').upsert({ phone_number: phone, status, updated_at: new Date().toISOString() });
+}
+
+async function clearStatus(phone) {
+  await supabase.from('order_status').delete().eq('phone_number', phone);
+}
+
 function getSaudiTime() {
   const now = new Date();
   const saudiTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }));
@@ -38,7 +51,6 @@ module.exports = async function handler(req, res) {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
-
     if (mode === "subscribe" && token === process.env.WHATSAPP_VERIFY_TOKEN) {
       return res.status(200).send(challenge);
     }
@@ -54,25 +66,17 @@ module.exports = async function handler(req, res) {
     const changes = entry?.changes?.[0];
     const value = changes?.value;
 
-    if (value?.statuses) {
-      return res.status(200).send("OK");
-    }
+    if (value?.statuses) return res.status(200).send("OK");
 
     const messages = value?.messages;
-
-    if (!messages || messages.length === 0) {
-      return res.status(200).send("OK");
-    }
+    if (!messages || messages.length === 0) return res.status(200).send("OK");
 
     const message = messages[0];
     const from = message.from;
     const messageId = message.id;
 
-    if (processedMessages.has(messageId)) {
-      return res.status(200).send("OK");
-    }
+    if (processedMessages.has(messageId)) return res.status(200).send("OK");
     processedMessages.add(messageId);
-
     if (processedMessages.size > 1000) {
       const first = processedMessages.values().next().value;
       processedMessages.delete(first);
@@ -90,22 +94,14 @@ module.exports = async function handler(req, res) {
       body = "[لوكيشن العميل: https://maps.google.com/?q=" + latitude + "," + longitude + "]";
     } else if (message.type === "button") {
       const payload = message.button?.payload || "";
-      if (payload === "قائمة الطعام") {
-        body = "المنيو";
-      } else if (payload === "الموقع والمعلومات") {
-        body = "اعطني معلومات المطعم والموقع";
-      } else {
-        body = payload;
-      }
+      if (payload === "قائمة الطعام") body = "المنيو";
+      else if (payload === "الموقع والمعلومات") body = "اعطني معلومات المطعم والموقع";
+      else body = payload;
     } else if (message.type === "interactive") {
       const buttonReply = message.interactive?.button_reply?.title || "";
-      if (buttonReply === "الموقع والمعلومات") {
-        body = "اعطني معلومات المطعم والموقع";
-      } else if (buttonReply === "قائمة الطعام") {
-        body = "المنيو";
-      } else {
-        body = buttonReply;
-      }
+      if (buttonReply === "الموقع والمعلومات") body = "اعطني معلومات المطعم والموقع";
+      else if (buttonReply === "قائمة الطعام") body = "المنيو";
+      else body = buttonReply;
     } else if (message.type === "text") {
       body = message.text.body.trim();
     } else {
@@ -116,46 +112,58 @@ module.exports = async function handler(req, res) {
       greetedUsers.add(from);
       await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
         method: "POST",
-        headers: {
-          Authorization: "Bearer " + process.env.WHATSAPP_TOKEN,
-          "Content-Type": "application/json"
-        },
+        headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
         body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: from,
-          type: "template",
-          template: {
-            name: "menu",
-            language: { code: "ar" }
-          }
+          messaging_product: "whatsapp", to: from, type: "template",
+          template: { name: "menu", language: { code: "ar" } }
         })
       });
       return res.status(200).send("OK");
     }
 
     const history = await getHistory(from);
+    const currentStatus = await getStatus(from);
 
-    const lastBotMessage = [...history].reverse().find(m => m.role === "assistant")?.content || "";
-    const isConfirmationQuestion = lastBotMessage.includes("تأكد") || lastBotMessage.includes("نأكد");
-    const userSaidYes = ["يس","نعم","اكد","صح","تمام","اوك","ايه","ابي","خلاص","اقولك ايه","وليها","yes","ok"].some(w => body.trim().includes(w));
+    // اذا العميل في مرحلة التأكيد
+    if (currentStatus === "awaiting_confirmation") {
+      const yesWords = ["يس","نعم","اكد","صح","تمام","اوك","ايه","ابي","خلاص","وليها","yes","ok","اقولك"];
+      const noWords = ["لا","كنسل","ما ابي","الغ","وقف","ما راح"];
+      const saidYes = yesWords.some(w => body.includes(w));
+      const saidNo = noWords.some(w => body.includes(w));
 
-    if (isConfirmationQuestion && userSaidYes) {
-      const confirmReply = "تم تأكيد طلبك 🌷";
-      await saveMessage(from, "user", body);
-      await saveMessage(from, "assistant", confirmReply);
-      await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
-        body: JSON.stringify({ messaging_product: "whatsapp", to: from, type: "text", text: { body: confirmReply } })
-      });
-      const lastOrders = history.slice(-6).map(m => (m.role === "user" ? "العميل" : "البوت") + ": " + m.content).join("\n");
-      await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
-        body: JSON.stringify({ messaging_product: "whatsapp", to: process.env.OWNER_PHONE, type: "text", text: { body: "🔔 طلب جديد!\nمن: " + from + "\n\n" + lastOrders } })
-      });
-      await clearHistory(from);
-      return res.status(200).send("OK");
+      if (saidYes) {
+        const confirmReply = "تم تأكيد طلبك 🌷";
+        await saveMessage(from, "user", body);
+        await saveMessage(from, "assistant", confirmReply);
+        await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
+          body: JSON.stringify({ messaging_product: "whatsapp", to: from, type: "text", text: { body: confirmReply } })
+        });
+        const lastOrders = history.slice(-6).map(m => (m.role === "user" ? "العميل" : "البوت") + ": " + m.content).join("\n");
+        await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
+          body: JSON.stringify({ messaging_product: "whatsapp", to: process.env.OWNER_PHONE, type: "text", text: { body: "🔔 طلب جديد!\nمن: " + from + "\n\n" + lastOrders } })
+        });
+        await clearHistory(from);
+        await clearStatus(from);
+        return res.status(200).send("OK");
+      }
+
+      if (saidNo) {
+        const cancelReply = "تم إلغاء طلبك يا عزيزي 🙏 إذا تبغى تطلب مرة ثانية أنا هنا 😊";
+        await saveMessage(from, "user", body);
+        await saveMessage(from, "assistant", cancelReply);
+        await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
+          body: JSON.stringify({ messaging_product: "whatsapp", to: from, type: "text", text: { body: cancelReply } })
+        });
+        await clearHistory(from);
+        await clearStatus(from);
+        return res.status(200).send("OK");
+      }
     }
 
     const { timeStr, isOpen } = getSaudiTime();
@@ -207,7 +215,6 @@ module.exports = async function handler(req, res) {
 قل بالضبط: "تم إلغاء طلبك يا عزيزي 🙏 إذا تبغى تطلب مرة ثانية أنا هنا 😊"
 
 إذا طلب تعديل — عدّل الطلب معه وأعرضه من جديد واسأله: هل نأكد الطلب الجديد؟
-لا ترسل أي تأكيد نهائي إلا بعد ما تفهم من السياق أن العميل موافق على الطلب الجديد.
 
 إذا سأل عن المنيو:
 
@@ -323,70 +330,41 @@ module.exports = async function handler(req, res) {
 
     await saveMessage(from, "assistant", reply);
 
+    // اذا البوت عرض الطلب وسأل عن التأكيد، نحفظ الـ flag
+    if (reply.includes("نأكد") || reply.includes("تأكد")) {
+      await setStatus(from, "awaiting_confirmation");
+    }
+
     await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
       method: "POST",
-      headers: {
-        Authorization: "Bearer " + process.env.WHATSAPP_TOKEN,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: from,
-        type: "text",
-        text: { body: reply }
-      })
+      headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", to: from, type: "text", text: { body: reply } })
     });
 
-    const isConfirmed = reply.includes("تم تأكيد طلبك");
     const isCancelled = reply.includes("تم إلغاء طلبك");
-    const isEditing = reply.includes("هل نأكد الطلب الجديد");
 
-    if ((isConfirmed && !isEditing) || isLocation) {
+    if (isLocation) {
       const lastOrders = [...history, { role: "user", content: body }, { role: "assistant", content: reply }]
         .slice(-6)
-        .map(function(m) { return (m.role === "user" ? "العميل" : "البوت") + ": " + m.content; })
-        .join("\n");
-
+        .map(m => (m.role === "user" ? "العميل" : "البوت") + ": " + m.content).join("\n");
       await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
         method: "POST",
-        headers: {
-          Authorization: "Bearer " + process.env.WHATSAPP_TOKEN,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: process.env.OWNER_PHONE,
-          type: "text",
-          text: {
-            body: "🔔 طلب جديد!\nمن: " + from + "\n\n" + lastOrders + (isLocation ? "\n\n📍 اللوكيشن: https://maps.google.com/?q=" + latitude + "," + longitude : "")
-          }
-        })
+        headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", to: process.env.OWNER_PHONE, type: "text", text: { body: "🔔 طلب جديد!\nمن: " + from + "\n\n" + lastOrders + "\n\n📍 اللوكيشن: https://maps.google.com/?q=" + latitude + "," + longitude } })
       });
-      await clearHistory(from);
     }
 
     if (isCancelled) {
       const lastOrders = [...history, { role: "user", content: body }, { role: "assistant", content: reply }]
         .slice(-6)
-        .map(function(m) { return (m.role === "user" ? "العميل" : "البوت") + ": " + m.content; })
-        .join("\n");
-
+        .map(m => (m.role === "user" ? "العميل" : "البوت") + ": " + m.content).join("\n");
       await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
         method: "POST",
-        headers: {
-          Authorization: "Bearer " + process.env.WHATSAPP_TOKEN,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: process.env.OWNER_PHONE,
-          type: "text",
-          text: {
-            body: "❌ تم إلغاء الطلب!\nمن: " + from + "\n\n" + lastOrders
-          }
-        })
+        headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", to: process.env.OWNER_PHONE, type: "text", text: { body: "❌ تم إلغاء الطلب!\nمن: " + from + "\n\n" + lastOrders } })
       });
       await clearHistory(from);
+      await clearStatus(from);
     }
 
     return res.status(200).send("OK");
