@@ -18,6 +18,10 @@ async function saveMessage(phone, role, message) {
   await supabase.from('conversations').insert({ phone_number: phone, role, message });
 }
 
+async function clearHistory(phone) {
+  await supabase.from('conversations').delete().eq('phone_number', phone);
+}
+
 function getSaudiTime() {
   const now = new Date();
   const saudiTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }));
@@ -132,7 +136,7 @@ module.exports = async function handler(req, res) {
     const history = await getHistory(from);
 
     const lastBotMessage = [...history].reverse().find(m => m.role === "assistant")?.content || "";
-const isConfirmationQuestion = lastBotMessage.includes("هل نأكد") || lastBotMessage.includes("هل تأكد") || lastBotMessage.includes("نأكد؟") || lastBotMessage.includes("تأكد؟") || lastBotMessage.includes("هل ذاك") || lastBotMessage.includes("ذاك الطلب");
+    const isConfirmationQuestion = lastBotMessage.includes("هل نأكد") || lastBotMessage.includes("هل تأكد") || lastBotMessage.includes("نأكد؟") || lastBotMessage.includes("تأكد؟") || lastBotMessage.includes("هل ذاك") || lastBotMessage.includes("ذاك الطلب");
     const userSaidYes = ["يس","نعم","اكد","صح","تمام","اوك","ايه","ابي","خلاص","اقولك ايه","وليها","yes","ok"].some(w => body.trim().includes(w));
 
     if (isConfirmationQuestion && userSaidYes) {
@@ -150,6 +154,7 @@ const isConfirmationQuestion = lastBotMessage.includes("هل نأكد") || lastB
         headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
         body: JSON.stringify({ messaging_product: "whatsapp", to: process.env.OWNER_PHONE, type: "text", text: { body: "🔔 طلب جديد!\nمن: " + from + "\n\n" + lastOrders } })
       });
+      await clearHistory(from);
       return res.status(200).send("OK");
     }
 
@@ -357,6 +362,7 @@ const isConfirmationQuestion = lastBotMessage.includes("هل نأكد") || lastB
           }
         })
       });
+      await clearHistory(from);
     }
 
     if (isCancelled) {
@@ -380,6 +386,7 @@ const isConfirmationQuestion = lastBotMessage.includes("هل نأكد") || lastB
           }
         })
       });
+      await clearHistory(from);
     }
 
     return res.status(200).send("OK");
