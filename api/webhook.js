@@ -17,6 +17,7 @@ async function getHistory(phone) {
 async function saveMessage(phone, role, message) {
   await supabase.from('conversations').insert({ phone_number: phone, role, message });
 }
+
 function getSaudiTime() {
   const now = new Date();
   const saudiTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }));
@@ -128,11 +129,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).send("OK");
     }
 
-    if (!conversationHistory.has(from)) {
-      conversationHistory.set(from, []);
-    }
-    const history = conversationHistory.get(from);
-
+    const history = await getHistory(from);
     const { timeStr, isOpen } = getSaudiTime();
 
     const systemPrompt = `
@@ -188,31 +185,31 @@ module.exports = async function handler(req, res) {
 إذا سأل عن المنيو:
 
 🍕 البيتزا
-• مارجريتا — 32 ريال
-• بيبروني — 36 ريال
-• الأجبان الأربعة — 36 ريال
-• الفريدو — 37 ريال
-• مسخن — 39 ريال
-• ترفل — 42 ريال
-• سموكي بريسكيت — 43 ريال
+- مارجريتا — 32 ريال
+- بيبروني — 36 ريال
+- الأجبان الأربعة — 36 ريال
+- الفريدو — 37 ريال
+- مسخن — 39 ريال
+- ترفل — 42 ريال
+- سموكي بريسكيت — 43 ريال
 
 🍝 الباستا
-• بيف بينك باستا — 31 ريال
-• ترافل ريغاتوني — 31 ريال
+- بيف بينك باستا — 31 ريال
+- ترافل ريغاتوني — 31 ريال
 
 🍟 الجانبيات
-• فرايز — 10 ريال
-• ترافل فرايز — 19 ريال
-• كرات الريزوتو — 22 ريال
+- فرايز — 10 ريال
+- ترافل فرايز — 19 ريال
+- كرات الريزوتو — 22 ريال
 
 🥫 الصوصات
-• رانش — 2 ريال
-• باربكيو — 2 ريال
-• عسل سبايسي — 3 ريال
+- رانش — 2 ريال
+- باربكيو — 2 ريال
+- عسل سبايسي — 3 ريال
 
 🥤 المشروبات
-• بيبسي — 3 ريال
-• ماء — 1 ريال
+- بيبسي — 3 ريال
+- ماء — 1 ريال
 
 معلومات المطعم:
 - الموقع: الرس، ريف جلاس
@@ -280,11 +277,7 @@ module.exports = async function handler(req, res) {
 تم تأكيد طلبك 🌷
 `;
 
-    history.push({ role: "user", content: body });
-
-    if (history.length > 10) {
-      history.splice(0, history.length - 10);
-    }
+    await saveMessage(from, "user", body);
 
     const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -297,14 +290,14 @@ module.exports = async function handler(req, res) {
         model: "claude-haiku-4-5-20251001",
         max_tokens: 800,
         system: systemPrompt,
-        messages: history
+        messages: [...history, { role: "user", content: body }]
       })
     });
 
     const claudeData = await claudeResponse.json();
     const reply = claudeData?.content?.[0]?.text?.trim() || "ياهلا 👋 أنا Pizza Peel 🍕 وش أخدمك فيه يا عزيزي؟ 😊";
 
-    history.push({ role: "assistant", content: reply });
+    await saveMessage(from, "assistant", reply);
 
     await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
       method: "POST",
@@ -325,7 +318,7 @@ module.exports = async function handler(req, res) {
     const isEditing = reply.includes("هل نأكد الطلب الجديد");
 
     if ((isConfirmed && !isEditing) || isLocation) {
-      const lastOrders = history
+      const lastOrders = [...history, { role: "user", content: body }, { role: "assistant", content: reply }]
         .slice(-6)
         .map(function(m) { return (m.role === "user" ? "العميل" : "البوت") + ": " + m.content; })
         .join("\n");
@@ -348,7 +341,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (isCancelled) {
-      const lastOrders = history
+      const lastOrders = [...history, { role: "user", content: body }, { role: "assistant", content: reply }]
         .slice(-6)
         .map(function(m) { return (m.role === "user" ? "العميل" : "البوت") + ": " + m.content; })
         .join("\n");
