@@ -1,7 +1,22 @@
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
 const greetedUsers = new Set();
-const conversationHistory = new Map();
 const processedMessages = new Set();
 
+async function getHistory(phone) {
+  const { data } = await supabase
+    .from('conversations')
+    .select('role, message')
+    .eq('phone_number', phone)
+    .order('created_at', { ascending: true })
+    .limit(10);
+  return data ? data.map(r => ({ role: r.role, content: r.message })) : [];
+}
+
+async function saveMessage(phone, role, message) {
+  await supabase.from('conversations').insert({ phone_number: phone, role, message });
+}
 function getSaudiTime() {
   const now = new Date();
   const saudiTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }));
