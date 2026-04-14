@@ -35,6 +35,21 @@ async function clearStatus(phone) {
   await supabase.from('order_status').delete().eq('phone_number', phone);
 }
 
+async function saveOrderHistory(phone, summary) {
+  await supabase.from('order_history').insert({ phone_number: phone, summary });
+}
+
+async function getLastOrder(phone) {
+  const { data } = await supabase
+    .from('order_history')
+    .select('summary')
+    .eq('phone_number', phone)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+  return data?.summary || null;
+}
+
 function getSaudiTime() {
   const now = new Date();
   const saudiTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }));
@@ -123,6 +138,7 @@ module.exports = async function handler(req, res) {
 
     const history = await getHistory(from);
     const currentStatus = await getStatus(from);
+    const lastOrder = await getLastOrder(from);
 
     // اذا العميل في مرحلة التأكيد
     if (currentStatus === "awaiting_confirmation") {
@@ -133,8 +149,10 @@ module.exports = async function handler(req, res) {
 
       if (saidYes) {
         const confirmReply = "تم تأكيد طلبك 🌷";
+        const orderSummary = history.slice(-6).filter(m => m.role === "assistant").pop()?.content || "";
         await saveMessage(from, "user", body);
         await saveMessage(from, "assistant", confirmReply);
+        await saveOrderHistory(from, orderSummary);
         await fetch("https://graph.facebook.com/v19.0/" + process.env.WHATSAPP_PHONE_ID + "/messages", {
           method: "POST",
           headers: { Authorization: "Bearer " + process.env.WHATSAPP_TOKEN, "Content-Type": "application/json" },
@@ -174,6 +192,7 @@ module.exports = async function handler(req, res) {
 الوقت الحالي في السعودية: ${timeStr}
 حالة المطعم الآن: ${isOpen ? "مفتوح ✅" : "مغلق ❌"}
 أوقات الدوام: من 4 مساءً (16:00) حتى 1 صباحاً (01:00)
+${lastOrder ? "آخر طلب مؤكد للعميل كان:\n" + lastOrder : ""}
 
 تكلم بالعربية بلهجة قصيمية خفيفة محترمة.
 كن ودود ومختصر واستخدم إيموجي بسيط.
@@ -208,6 +227,7 @@ module.exports = async function handler(req, res) {
 - إذا قال العميل "المنيو" أو "وش عندكم" اعرض المنيو كامل فوراً.
 - إذا أرسل العميل لوكيشن، رد: "تم استلام موقعك 📍 والسائق في الطريق إليك إن شاء الله 🛵"
 - إذا طلب معلومات المطعم أو الموقع، أعطه المعلومات كاملة.
+- إذا سأل العميل عن طلبه السابق، أخبره بآخر طلب مؤكد من المعلومات أعلاه.
 
 --- تعديل أو إلغاء الطلب ---
 
@@ -330,7 +350,6 @@ module.exports = async function handler(req, res) {
 
     await saveMessage(from, "assistant", reply);
 
-    // اذا البوت عرض الطلب وسأل عن التأكيد، نحفظ الـ flag
     if (reply.includes("نأكد") || reply.includes("تأكد")) {
       await setStatus(from, "awaiting_confirmation");
     }
